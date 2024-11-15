@@ -18,5 +18,3 @@ L'application de vote n'accepte qu'un seul vote par navigateur client. Elle n'en
 Il ne s'agit pas d'un exemple d'application distribuée correctement architecturée et parfaitement conçue... c'est juste un simple
 exemple simple des différents types de pièces et de langages que vous pourriez voir (files d'attente, données persistantes, etc.), et comment les gérer dans Docker au niveau de l'architecture.
 comment les gérer dans Docker à un niveau basique.
-
-Traduit avec DeepL.com (version gratuite)
