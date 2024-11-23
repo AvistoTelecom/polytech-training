@@ -71,7 +71,6 @@ namespace Worker
         {
             string connectionString = Environment.GetEnvironmentVariable("POSTGRESQLCONNSTR_MAIN");
             NpgsqlConnection connection;
-            Console.WriteLine(connectionString);
             while (true)
             {
                 try
