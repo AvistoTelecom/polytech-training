@@ -4,23 +4,23 @@ using System.Linq;
 using System.Net;
 using System.Net.Sockets;
 using System.Threading;
+using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Npgsql;
 using StackExchange.Redis;
-using System.Net.Http;
 
 namespace Worker
 {
     public class Program
     {
-        private static HttpListener httpListener = new HttpListener();
+        private static readonly CancellationTokenSource cts = new CancellationTokenSource();
 
-        public static int Main(string[] args)
+        public static async Task Main(string[] args)
         {
             try
             {
-                httpListener.Prefixes.Add("http://*:8080/");
-                httpListener.Start();
+                // Start health check server in a separate thread
+                Task.Run(() => StartHealthCheckServer(cts.Token));
 
                 var pgsql = OpenDbConnection();
                 var redisConn = OpenRedisConnection();
@@ -32,10 +32,11 @@ namespace Worker
                 keepAliveCommand.CommandText = "SELECT 1";
 
                 var definition = new { vote = "", voter_id = "" };
-                while (true)
+
+                while (!cts.Token.IsCancellationRequested)
                 {
                     // Slow down to prevent CPU spike, only query each 200ms
-                    Thread.Sleep(200);
+                    await Task.Delay(200, cts.Token);
 
                     // Reconnect redis if down
                     if (redisConn == null || !redisConn.IsConnected)
@@ -44,7 +45,8 @@ namespace Worker
                         redisConn = OpenRedisConnection();
                         redis = redisConn.GetDatabase();
                     }
-                    string json = redis.ListLeftPopAsync("votes").Result;
+
+                    string json = await redis.ListLeftPopAsync("votes");
                     if (json != null)
                     {
                         var vote = JsonConvert.DeserializeAnonymousType(json, definition);
@@ -64,20 +66,45 @@ namespace Worker
                     {
                         keepAliveCommand.ExecuteNonQuery();
                     }
-
-                    // Handle HTTP requests for App Services to keep worker alive
-                    HttpListenerContext context = httpListener.GetContext();
-                    context.Response.StatusCode = 200;
-                    context.Response.OutputStream.Write(Array.Empty<byte>(), 0, 0);
-                    context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
-                    context.Response.Close();
                 }
             }
             catch (Exception ex)
             {
                 Console.Error.WriteLine(ex.ToString());
-                return 1;
+                cts.Cancel();
             }
+        }
+
+        private static async Task StartHealthCheckServer(CancellationToken token)
+        {
+            var listener = new HttpListener();
+            listener.Prefixes.Add("http://*:8080/healthz/");
+            listener.Start();
+            Console.WriteLine("Health check server started at http://*:8080/healthz/");
+
+            while (!token.IsCancellationRequested)
+            {
+                try
+                {
+                    var context = await listener.GetContextAsync();
+                    context.Response.StatusCode = 200;
+                    var responseMessage = "Healthy";
+                    byte[] responseBytes = System.Text.Encoding.UTF8.GetBytes(responseMessage);
+                    context.Response.OutputStream.Write(responseBytes, 0, responseBytes.Length);
+                    context.Response.Close();
+                }
+                catch (HttpListenerException ex) when (ex.ErrorCode == 995) // Cancelled IO
+                {
+                    Console.WriteLine("Health check server shutting down.");
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Console.Error.WriteLine($"Error in health check server: {ex}");
+                }
+            }
+
+            listener.Close();
         }
 
         private static NpgsqlConnection OpenDbConnection()
@@ -145,13 +172,6 @@ namespace Worker
                 }
             }
         }
-
-        private static string GetIp(string hostname)
-            => Dns.GetHostEntryAsync(hostname)
-                .Result
-                .AddressList
-                .First(a => a.AddressFamily == AddressFamily.InterNetwork)
-                .ToString();
 
         private static void UpdateVote(NpgsqlConnection connection, string voterId, string vote)
         {
