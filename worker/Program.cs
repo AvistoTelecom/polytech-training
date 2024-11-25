@@ -7,15 +7,20 @@ using System.Threading;
 using Newtonsoft.Json;
 using Npgsql;
 using StackExchange.Redis;
+using System.Net.Http;
 
 namespace Worker
 {
     public class Program
     {
+        private static HttpListener httpListener = new HttpListener();
+
         public static int Main(string[] args)
         {
             try
             {
+                httpListener.Prefixes.Add("http://*:8080/");
+                httpListener.Start();
 
                 var pgsql = OpenDbConnection();
                 var redisConn = OpenRedisConnection();
@@ -29,11 +34,12 @@ namespace Worker
                 var definition = new { vote = "", voter_id = "" };
                 while (true)
                 {
-                    // Slow down to prevent CPU spike, only query each 100ms
-                    Thread.Sleep(100);
+                    // Slow down to prevent CPU spike, only query each 200ms
+                    Thread.Sleep(200);
 
                     // Reconnect redis if down
-                    if (redisConn == null || !redisConn.IsConnected) {
+                    if (redisConn == null || !redisConn.IsConnected)
+                    {
                         Console.WriteLine("Reconnecting Redis");
                         redisConn = OpenRedisConnection();
                         redis = redisConn.GetDatabase();
@@ -58,6 +64,13 @@ namespace Worker
                     {
                         keepAliveCommand.ExecuteNonQuery();
                     }
+
+                    // Handle HTTP requests for App Services to keep worker alive
+                    HttpListenerContext context = httpListener.GetContext();
+                    context.Response.StatusCode = 200;
+                    context.Response.OutputStream.Write(Array.Empty<byte>(), 0, 0);
+                    context.Response.Headers.Add("Access-Control-Allow-Origin", "*");
+                    context.Response.Close();
                 }
             }
             catch (Exception ex)
