@@ -19,10 +19,10 @@ io.on('connection', function (socket) {
   });
 });
 
-if (process.env.POSTGRESQLCONNSTR_DB) {
-  var connectionString = process.env.POSTGRESQLCONNSTR_DB;
+if (process.env.POSTGRESQL_CONNSTR_DB) {
+  var connectionString = process.env.POSTGRESQL_CONNSTR_DB;
 } else {
-  console.error('POSTGRESQLCONNSTR_DB env var is empty.\nExiting.');
+  console.error('POSTGRESQL_CONNSTR_DB env var is empty.\nExiting.');
   exit(1);
 }
 
@@ -34,7 +34,7 @@ var pool = new Pool({
 });
 
 async.retry(
-  {times: 1000, interval: 1000},
+  {times: 3, interval: 1000},
   function(callback) {
     pool.connect(function(err, client, done) {
       if (err) {
