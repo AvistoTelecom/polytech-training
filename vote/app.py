@@ -1,5 +1,5 @@
 from flask import Flask, render_template, request, make_response, g
-from redis import Redis
+import redis
 import os
 import socket
 import random
@@ -9,9 +9,7 @@ import logging
 
 option_a = os.getenv("OPTION_A", "Glaces")
 option_b = os.getenv("OPTION_B", "Sorbets")
-redis_password = os.environ["REDIS_PASSWORD"]
-redis_port = os.getenv("REDIS_PORT", 6380)
-redis_host = os.environ["REDIS_HOST"]
+redis_connection_string = os.environ["REDIS_CONNECTION_STRING"]
 hostname = socket.gethostname()
 
 app = Flask(__name__)
@@ -28,13 +26,7 @@ def get_redis():
 
         for attempt in range(max_retries):
             try:
-                g.redis = Redis(
-                    host=redis_host,
-                    port=redis_port,
-                    password=redis_password,
-                    ssl=True,
-                    decode_responses=True,
-                )
+                g.redis = redis.from_url(redis_connection_string)
                 g.redis.ping()
                 break
             except ConnectionError as e:
