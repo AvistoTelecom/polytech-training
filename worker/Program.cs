@@ -109,7 +109,7 @@ namespace Worker
 
         private static NpgsqlConnection OpenDbConnection()
         {
-            string connectionString = Environment.GetEnvironmentVariable("POSTGRESQLCONNSTR_DB");
+            string connectionString = Environment.GetEnvironmentVariable("POSTGRESQL_CONNSTR_DB");
             NpgsqlConnection connection;
             while (true)
             {
