@@ -140,7 +140,7 @@ namespace Worker
                 }
             }
 
-            Console.Error.WriteLine("Connected to db");
+            Console.WriteLine("Connected to db");
 
             var command = connection.CreateCommand();
             command.CommandText = @"CREATE TABLE IF NOT EXISTS votes (
@@ -161,12 +161,13 @@ namespace Worker
                 throw new InvalidOperationException("Environment variable 'REDIS_CONNECTION_STRING' is not set or empty. Application cannot start.");
             }
 
+            ConnectionMultiplexer connection;
             while (true)
             {
                 try
                 {
-                    return ConnectionMultiplexer.Connect(connectionString);
-                    Console.Error.WriteLine($"Connected to redis");
+                    connection = ConnectionMultiplexer.Connect(connectionString);
+                    break;
                 }
                 catch (RedisConnectionException)
                 {
@@ -174,6 +175,8 @@ namespace Worker
                     Thread.Sleep(1000);
                 }
             }
+            Console.WriteLine($"Connected to redis");
+            return connection;
         }
 
         private static void UpdateVote(NpgsqlConnection connection, string voterId, string vote)
