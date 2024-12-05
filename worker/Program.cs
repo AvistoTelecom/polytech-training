@@ -20,11 +20,12 @@ namespace Worker
             try
             {
                 // Start health check server in a separate thread
-                Task.Run(() => StartHealthCheckServer(cts.Token));
 
                 var pgsql = OpenDbConnection();
                 var redisConn = OpenRedisConnection();
                 var redis = redisConn.GetDatabase();
+
+                Task.Run(() => StartHealthCheckServer(cts.Token));
 
                 // Keep alive is not implemented in Npgsql yet. This workaround was recommended:
                 // https://github.com/npgsql/npgsql/issues/1214#issuecomment-235828359
@@ -109,7 +110,13 @@ namespace Worker
 
         private static NpgsqlConnection OpenDbConnection()
         {
-            string connectionString = Environment.GetEnvironmentVariable("POSTGRESQL_CONNSTR_DB");
+            string connectionString = Environment.GetEnvironmentVariable("POSTGRESQL_CONNECTION_STRING");
+
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException("Environment variable 'POSTGRESQL_CONNECTION_STRING' is not set or empty. Application cannot start.");
+            }
+
             NpgsqlConnection connection;
             while (true)
             {
@@ -147,23 +154,19 @@ namespace Worker
 
         private static ConnectionMultiplexer OpenRedisConnection()
         {
-            var redisHost = Environment.GetEnvironmentVariable("REDIS_HOST");
-            var redisPort = int.Parse(Environment.GetEnvironmentVariable("REDIS_PORT") ?? "6380");
+            var connectionString = Environment.GetEnvironmentVariable("REDIS_CONNECTION_STRING");
 
-            var configOptions = new ConfigurationOptions
+            if (string.IsNullOrWhiteSpace(connectionString))
             {
-                EndPoints = { $"{redisHost}:{redisPort}" },
-                Password = Environment.GetEnvironmentVariable("REDIS_PASSWORD"),
-                Ssl = true,
-                AbortOnConnectFail = false
-            };
+                throw new InvalidOperationException("Environment variable 'REDIS_CONNECTION_STRING' is not set or empty. Application cannot start.");
+            }
 
             while (true)
             {
                 try
                 {
-                    Console.Error.WriteLine($"Connecting to redis at {redisHost}:{redisPort}");
-                    return ConnectionMultiplexer.Connect(configOptions);
+                    return ConnectionMultiplexer.Connect(connectionString);
+                    Console.Error.WriteLine($"Connected to redis");
                 }
                 catch (RedisConnectionException)
                 {
