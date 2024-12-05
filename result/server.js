@@ -27,10 +27,7 @@ if (process.env.POSTGRESQL_CONNSTR_DB) {
 }
 
 var pool = new Pool({
-  connectionString,
-  ssl: {
-    rejectUnauthorized: false
-  }
+  connectionString
 });
 
 async.retry(
