@@ -1,0 +1,33 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: worker
+  name: worker
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: worker
+  template:
+    metadata:
+      labels:
+        app: worker
+    spec:
+      containers:
+        - image: rgy.k8s.devops-svc-ag.com/polytech/worker:1.1.1
+          name: worker
+          imagePullPolicy: Always
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8080
+          env:
+            - name: REDIS_CONNECTION_STRING
+              value: "redis"
+            - name: POSTGRESQL_CONNECTION_STRING
+              value: "Server=db;Username=postgres;Password=postgres"
