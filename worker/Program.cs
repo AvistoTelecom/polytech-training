@@ -19,12 +19,16 @@ namespace Worker
         {
             try
             {
-                // Start health check server in a separate thread
+                // For rollout & breaking image
+                Thread.Sleep(5000);
+                Console.Error.WriteLine("Error in the code, blocked…");
+                Thread.Sleep(10000000);
 
                 var pgsql = OpenDbConnection();
                 var redisConn = OpenRedisConnection();
                 var redis = redisConn.GetDatabase();
 
+                // Start health check server in a separate thread
                 Task.Run(() => StartHealthCheckServer(cts.Token));
 
                 // Keep alive is not implemented in Npgsql yet. This workaround was recommended:
