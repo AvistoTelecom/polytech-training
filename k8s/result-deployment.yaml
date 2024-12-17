@@ -15,7 +15,7 @@ spec:
         app: result
     spec:
       containers:
-        - image: rgy.k8s.devops-svc-ag.com/polytech/result:tp3
+        - image: rgy.k8s.devops-svc-ag.com/polytech/result:1.2.0
           name: result
           imagePullPolicy: Always
           ports:
