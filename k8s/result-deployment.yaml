@@ -15,7 +15,7 @@ spec:
         app: result
     spec:
       containers:
-        - image: rgy.k8s.devops-svc-ag.com/polytech/result:1.2.0
+        - image: rgy.k8s.devops-svc-ag.com/polytech/result:1.2.1
           name: result
           imagePullPolicy: Always
           ports:
@@ -30,5 +30,5 @@ spec:
               path: /
               port: 80
           env:
-            - name: POSTGRESQL_CONNSTR_DB
+            - name: POSTGRESQL_CONNECTION_STRING
               value: "postgres://postgres:postgres@db"

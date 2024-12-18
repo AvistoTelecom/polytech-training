@@ -19,10 +19,10 @@ io.on('connection', function (socket) {
   });
 });
 
-if (process.env.POSTGRESQL_CONNSTR_DB) {
-  var connectionString = process.env.POSTGRESQL_CONNSTR_DB;
+if (process.env.POSTGRESQL_CONNECTION_STRING) {
+  var connectionString = process.env.POSTGRESQL_CONNECTION_STRING;
 } else {
-  console.error('POSTGRESQL_CONNSTR_DB env var is empty.\nExiting.');
+  console.error('POSTGRESQL_CONNECTION_STRING env var is empty.\nExiting.');
   exit(1);
 }
 
