@@ -19,11 +19,6 @@ namespace Worker
         {
             try
             {
-                // For rollout & breaking image
-                Thread.Sleep(5000);
-                Console.Error.WriteLine("Error in the code, blocked…");
-                Thread.Sleep(10000000);
-
                 var pgsql = OpenDbConnection();
                 var redisConn = OpenRedisConnection();
                 var redis = redisConn.GetDatabase();
