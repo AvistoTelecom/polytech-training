@@ -1,7 +1,7 @@
 # ============================================
 # 0. RANDOM STRING
 # ============================================
-resource "random_string" "redis_suffix" {
+resource "random_string" "suffix" {
   length  = 5
   upper   = false
   lower   = true
@@ -56,7 +56,7 @@ resource "azurerm_subnet" "asp" {
 # 3. REDIS CACHE (BASIC)
 # ============================================
 resource "azurerm_redis_cache" "redis" {
-  name                = "redis-${random_string.redis_suffix.result}"
+  name                = "redis-${random_string.suffix.result}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
 
@@ -119,7 +119,7 @@ resource "azurerm_service_plan" "voting_app" {
 # 6. WEB APP
 # ============================================
 resource "azurerm_linux_web_app" "vote" {
-  name                = "vote"
+  name                = "vote-${random_string.suffix.result}"
   location            = azurerm_resource_group.rg.location
   resource_group_name = azurerm_resource_group.rg.name
   service_plan_id     = azurerm_service_plan.voting_app.id
