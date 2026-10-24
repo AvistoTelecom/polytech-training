@@ -3,3 +3,8 @@ Dockerfile
 __pycache__
 voting-app.service
 compose.yaml
+
+# Go binaries
+/vote/vote
+/worker/worker
+/result/result
