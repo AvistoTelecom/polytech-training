@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html ng-app="catsvsdogs">
+<html>
   <head>
     <meta charset="utf-8">
     <title>Cats vs Dogs -- Result</title>
@@ -9,7 +9,7 @@
     <meta name="author" content="Docker">
     <link rel='stylesheet' href='/stylesheets/style.css' />
   </head>
-  <body ng-controller="statsCtrl" >
+  <body>
      <div id="background-stats">
        <div id="background-stats-1">
        </div><!--
@@ -21,24 +21,19 @@
         <div id="choice">
           <div class="choice cats">
             <div class="label">Cats</div>
-            <div class="stat">{{aPercent | number:1}}%</div>
+            <div class="stat"><span id="a-percent">50</span>%</div>
           </div>
           <div class="divider"></div>
           <div class="choice dogs">
             <div class="label">Dogs</div>
-            <div class="stat">{{bPercent | number:1}}%</div>
+            <div class="stat"><span id="b-percent">50</span>%</div>
           </div>
         </div>
       </div>
     </div>
     <div id="result">
-      <span ng-if="!total">Database connection error</span>
-      <span ng-if="total == 0">No votes yet</span>
-      <span ng-if="total == 1">{{total}} vote</span>
-      <span ng-if="total >= 2">{{total}} votes</span>
+      <span id="total"></span>
     </div>
-    <script src="socket.io.js"></script>
-    <script src="angular.min.js"></script>
     <script src="app.js"></script>
   </body>
 </html>
