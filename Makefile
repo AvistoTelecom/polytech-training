@@ -24,6 +24,10 @@ GOVULNCHECK ?= $(GO) run golang.org/x/vuln/cmd/govulncheck@v1.9.0
 
 KO_FLAGS := --base-import-paths --tags='$(TAG)' --sbom=none
 
+# ko only reads DOCKER_HOST and ignores `docker context`, so `make build` hands it the
+# active context's endpoint (rootless Docker, Docker Desktop...) unless DOCKER_HOST is set.
+DOCKER_ENDPOINT = $(or $(DOCKER_HOST),$(shell docker context inspect --format '{{.Endpoints.docker.Host}}'))
+
 # Runs a command in each service directory and stops at the first failure.
 define each_service
 	@set -e; for s in $(SERVICES); do echo "==> $$s"; (cd $$s && $(1)); done
@@ -44,7 +48,7 @@ build-go:
 
 ## build: Build the container images with ko and load them into the local Docker daemon
 build:
-	$(call each_service,KO_DOCKER_REPO='$(REGISTRY)' $(KO) build --local $(KO_FLAGS) --platform='$(LOCAL_PLATFORM)' .)
+	$(call each_service,DOCKER_HOST='$(DOCKER_ENDPOINT)' KO_DOCKER_REPO='$(REGISTRY)' $(KO) build --local $(KO_FLAGS) --platform='$(LOCAL_PLATFORM)' .)
 
 ## push: Build multi-arch images with ko and push them to REGISTRY (TAG is required)
 push:
