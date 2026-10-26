@@ -95,7 +95,7 @@ func run() error {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("POST /{$}", s.handleIndex)
 
-	return serve(ctx, ":"+getenv("PORT", "80"), mux)
+	return serve(ctx, ":"+getenv("PORT", "8080"), mux)
 }
 
 // connectValkey retries with exponential backoff until Valkey answers a PING.
@@ -106,6 +106,7 @@ func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
 	}
 
 	delay := time.Second
+
 	for {
 		client, err := valkey.NewClient(opts)
 		if err == nil {
@@ -114,8 +115,10 @@ func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
 				slog.Info("Connected to valkey")
 				return client, nil
 			}
+
 			client.Close()
 		}
+
 		slog.Warn("Waiting for valkey", "error", err, "retry_in", delay)
 
 		select {
@@ -123,6 +126,7 @@ func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
 			return nil, ctx.Err()
 		case <-time.After(delay):
 		}
+
 		delay = min(delay*2, 30*time.Second)
 	}
 }
@@ -147,17 +151,27 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "internal error", http.StatusInternalServerError)
 			return
 		}
+
 		cmd := s.valkey.B().Rpush().Key(votesKey).Element(string(payload)).Build()
 		if err := s.valkey.Do(r.Context(), cmd).Error(); err != nil {
 			slog.Error("push vote", "error", err)
 			http.Error(w, "could not record vote", http.StatusServiceUnavailable)
+
 			return
 		}
+
 		slog.Info("Received vote", "vote", vote)
 		data.Vote = vote
 	}
 
-	http.SetCookie(w, &http.Cookie{Name: "voter_id", Value: voterID, Path: "/", HttpOnly: true})
+	http.SetCookie(w, &http.Cookie{ //nolint:gosec // G124: no Secure flag, the labs serve the app over plain HTTP
+		Name:     "voter_id",
+		Value:    voterID,
+		Path:     "/",
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
+
 	if err := s.tmpl.Execute(w, data); err != nil {
 		slog.Error("render page", "error", err)
 	}
@@ -168,12 +182,14 @@ func voterIDFromCookie(r *http.Request) string {
 	if err != nil {
 		return ""
 	}
+
 	return c.Value
 }
 
 func newVoterID() string {
 	b := make([]byte, 8)
 	_, _ = rand.Read(b) // crypto/rand.Read never returns an error
+
 	return hex.EncodeToString(b)
 }
 
@@ -185,6 +201,7 @@ func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return fallback
 }
 
@@ -193,8 +210,10 @@ func serve(ctx context.Context, addr string, h http.Handler) error {
 	srv := &http.Server{Addr: addr, Handler: h, ReadHeaderTimeout: 5 * time.Second}
 
 	errCh := make(chan error, 1)
+
 	go func() {
 		slog.Info("App running", "addr", addr)
+
 		errCh <- srv.ListenAndServe()
 	}()
 
@@ -206,5 +225,6 @@ func serve(ctx context.Context, addr string, h http.Handler) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	return srv.Shutdown(shutdownCtx)
 }

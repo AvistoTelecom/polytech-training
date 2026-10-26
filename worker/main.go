@@ -32,7 +32,8 @@ func main() {
 	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
 	slog.SetDefault(logger)
 
-	if err := run(); err != nil {
+	// A cancelled context means a graceful shutdown (SIGINT/SIGTERM), not a failure.
+	if err := run(); err != nil && !errors.Is(err, context.Canceled) {
 		slog.Error("worker stopped", "error", err)
 		os.Exit(1)
 	}
@@ -46,6 +47,7 @@ func run() error {
 	if postgresURL == "" {
 		return errors.New("POSTGRES_URL env var is empty")
 	}
+
 	valkeyURL := os.Getenv("VALKEY_URL")
 	if valkeyURL == "" {
 		return errors.New("VALKEY_URL env var is empty")
@@ -76,15 +78,17 @@ func run() error {
 func processVotes(ctx context.Context, vk valkey.Client, db *pgxpool.Pool) error {
 	for {
 		cmd := vk.B().Blpop().Key(votesKey).Timeout(popTimeout.Seconds()).Build()
+
 		res, err := vk.Do(ctx, cmd).AsStrSlice()
 		switch {
 		case ctx.Err() != nil:
-			return nil
+			return ctx.Err()
 		case valkey.IsValkeyNil(err):
 			continue // timeout, nothing to process
 		case err != nil:
 			slog.Error("Waiting for valkey", "error", err)
 			sleep(ctx, time.Second)
+
 			continue
 		}
 
@@ -96,6 +100,7 @@ func processVotes(ctx context.Context, vk valkey.Client, db *pgxpool.Pool) error
 		}
 
 		slog.Info("Processing vote", "vote", b.Vote, "voter_id", b.VoterID)
+
 		if err := storeVote(ctx, db, b); err != nil {
 			slog.Error("Could not store vote", "error", err)
 		}
@@ -107,9 +112,11 @@ func decodeBallot(payload string) (ballot, error) {
 	if err := json.Unmarshal([]byte(payload), &b); err != nil {
 		return b, err
 	}
+
 	if b.VoterID == "" || b.Vote == "" {
 		return b, errors.New("missing voter_id or vote")
 	}
+
 	return b, nil
 }
 
@@ -119,6 +126,7 @@ func storeVote(ctx context.Context, db *pgxpool.Pool, b ballot) error {
 		`INSERT INTO votes (id, vote) VALUES ($1, $2)
 		 ON CONFLICT (id) DO UPDATE SET vote = EXCLUDED.vote`,
 		b.VoterID, b.Vote)
+
 	return err
 }
 
@@ -130,6 +138,7 @@ func ensureSchema(ctx context.Context, db *pgxpool.Pool) error {
 	if err != nil {
 		return fmt.Errorf("create votes table: %w", err)
 	}
+
 	return nil
 }
 
@@ -138,13 +147,16 @@ func connectPostgres(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse POSTGRES_URL: %w", err)
 	}
+
 	for {
 		err := pool.Ping(ctx)
 		if err == nil {
 			slog.Info("Connected to db")
 			return pool, nil
 		}
+
 		slog.Warn("Waiting for db", "error", err)
+
 		if !sleep(ctx, time.Second) {
 			pool.Close()
 			return nil, ctx.Err()
@@ -157,6 +169,7 @@ func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse VALKEY_URL: %w", err)
 	}
+
 	for {
 		client, err := valkey.NewClient(opts)
 		if err == nil {
@@ -165,9 +178,12 @@ func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
 				slog.Info("Connected to valkey")
 				return client, nil
 			}
+
 			client.Close()
 		}
+
 		slog.Warn("Waiting for valkey", "error", err)
+
 		if !sleep(ctx, time.Second) {
 			return nil, ctx.Err()
 		}
@@ -184,10 +200,12 @@ func serveHealthz(ctx context.Context) {
 
 	go func() {
 		<-ctx.Done()
+
 		_ = srv.Close()
 	}()
 
 	slog.Info("Health check server started", "addr", healthzAddr+"/healthz")
+
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		slog.Error("Health check server failed", "error", err)
 	}

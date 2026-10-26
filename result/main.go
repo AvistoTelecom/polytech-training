@@ -73,17 +73,21 @@ func connectPostgres(ctx context.Context, url string) (*pgxpool.Pool, error) {
 	if err != nil {
 		return nil, fmt.Errorf("parse POSTGRES_URL: %w", err)
 	}
+
 	for attempt := 1; ; attempt++ {
 		err = pool.Ping(ctx)
 		if err == nil {
 			slog.Info("Connected to db")
 			return pool, nil
 		}
+
 		slog.Warn("Waiting for db", "error", err)
+
 		if attempt == connectAttempts {
 			pool.Close()
 			return nil, fmt.Errorf("giving up, could not connect to database: %w", err)
 		}
+
 		select {
 		case <-ctx.Done():
 			pool.Close()
@@ -129,17 +133,23 @@ func queryScores(ctx context.Context, db *pgxpool.Pool) (scores, error) {
 	defer rows.Close()
 
 	counts := map[string]int64{}
+
 	for rows.Next() {
-		var vote string
-		var count int64
+		var (
+			vote  string
+			count int64
+		)
 		if err := rows.Scan(&vote, &count); err != nil {
 			return scores{}, err
 		}
+
 		counts[vote] = count
 	}
+
 	if err := rows.Err(); err != nil {
 		return scores{}, err
 	}
+
 	return scoresFromCounts(counts), nil
 }
 
@@ -151,6 +161,7 @@ func getenv(key, fallback string) string {
 	if v := os.Getenv(key); v != "" {
 		return v
 	}
+
 	return fallback
 }
 
@@ -164,8 +175,10 @@ func serve(ctx context.Context, addr string, h http.Handler) error {
 	}
 
 	errCh := make(chan error, 1)
+
 	go func() {
 		slog.Info("App running", "addr", addr)
+
 		errCh <- srv.ListenAndServe()
 	}()
 
@@ -177,5 +190,6 @@ func serve(ctx context.Context, addr string, h http.Handler) error {
 
 	shutdownCtx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
+
 	return srv.Shutdown(shutdownCtx)
 }

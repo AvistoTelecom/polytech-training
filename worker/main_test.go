@@ -3,6 +3,8 @@ package main
 import "testing"
 
 func TestDecodeBallot(t *testing.T) {
+	t.Parallel()
+
 	tests := []struct {
 		payload string
 		want    ballot
@@ -18,6 +20,7 @@ func TestDecodeBallot(t *testing.T) {
 			t.Errorf("decodeBallot(%q) error = %v, wantErr %v", tt.payload, err, tt.wantErr)
 			continue
 		}
+
 		if !tt.wantErr && got != tt.want {
 			t.Errorf("decodeBallot(%q) = %+v, want %+v", tt.payload, got, tt.want)
 		}

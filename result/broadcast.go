@@ -45,12 +45,14 @@ func (b *broadcaster) subscribe() chan event {
 	if b.last != nil {
 		ch <- *b.last
 	}
+
 	return ch
 }
 
 func (b *broadcaster) unsubscribe(ch chan event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
 	delete(b.clients, ch)
 }
 
@@ -73,6 +75,7 @@ func (b *broadcaster) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 			if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", e.name, e.data); err != nil {
 				return
 			}
+
 			if err := rc.Flush(); err != nil {
 				return
 			}
