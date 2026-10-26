@@ -30,7 +30,7 @@ All three services are written in Go. Each one is its own module (`vote/`, `work
 
 Everything goes through the root `Makefile` (`make help`). Because each service is a separate module, the Makefile loops over `SERVICES` and runs each command from inside the service directory.
 
-- `make dev`: ko-builds the images, then `docker compose up` with the committed `compose.yaml` (vote on :5000, result on :5001)
+- `make dev`: ko-builds the images, runs `make up` (`docker compose up -d --wait` with the committed `compose.yaml`, then prints the vote :5000 and result :5001 URLs) and follows the logs. Ctrl+C leaves the stack running; `make down` stops it
 - `make build` / `make push`: ko builds `$(REGISTRY)/<svc>:$(TAG)`. `build` targets only the host platform and loads into Docker. `push` is multi-arch (`PLATFORMS`), refuses the default `TAG=dev`, and is what CI will call
 - `make check`: lint + test + audit + tidy-check (the CI gate)
 - `make build-go`, `make test`, `make lint` (golangci-lint with the root `.golangci.yml`), `make audit` (govulncheck), `make tidy`

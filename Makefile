@@ -55,13 +55,18 @@ push:
 	@test '$(TAG)' != dev || { echo "push: set TAG, e.g. make push TAG=1.0.0"; exit 1; }
 	$(call each_service,KO_DOCKER_REPO='$(REGISTRY)' $(KO) build $(KO_FLAGS) --platform='$(PLATFORMS)' .)
 
-## dev: Build the images and run the full stack (vote on :5000, result on :5001)
-dev: build
-	REGISTRY='$(REGISTRY)' TAG='$(TAG)' $(COMPOSE) up
+## dev: Build the images, start the stack, print its URLs and follow the logs
+dev: build up
+	@echo "Following logs (Ctrl+C stops following, the stack keeps running; 'make down' stops it)"
+	@$(COMPOSE) logs -f --tail=0 || true
 
 ## up: Start the full stack in the background with the existing images
 up:
-	REGISTRY='$(REGISTRY)' TAG='$(TAG)' $(COMPOSE) up -d
+	REGISTRY='$(REGISTRY)' TAG='$(TAG)' $(COMPOSE) up -d --wait
+	@echo
+	@echo "  Vote:   http://localhost:5000"
+	@echo "  Result: http://localhost:5001"
+	@echo
 
 ## down: Stop the stack (keeps the database volume)
 down:
