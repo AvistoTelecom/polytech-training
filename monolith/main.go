@@ -96,12 +96,17 @@ func run() error {
 		return err
 	}
 
+	resultTmpl, err := template.ParseFS(assets, "web/result/index.html")
+	if err != nil {
+		return fmt.Errorf("parse template: %w", err)
+	}
+
 	hostname, _ := os.Hostname()
 	s := &server{
 		db:       db,
 		tmpl:     tmpl,
-		optionA:  getenv("OPTION_A", "Glaces"),
-		optionB:  getenv("OPTION_B", "Sorbets"),
+		optionA:  getenv("OPTION_A", "Cats"),
+		optionB:  getenv("OPTION_B", "Dogs"),
 		hostname: hostname,
 	}
 
@@ -109,6 +114,13 @@ func run() error {
 	mux.HandleFunc("GET /vote/{$}", s.handleVote)
 	mux.HandleFunc("POST /vote/{$}", s.handleVote)
 	mux.Handle("GET /vote/style.css", http.StripPrefix("/vote/", http.FileServerFS(voteFiles)))
+	mux.HandleFunc("GET /result/{$}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+		if err := resultTmpl.Execute(w, page{OptionA: s.optionA, OptionB: s.optionB}); err != nil {
+			slog.Error("Error rendering result page", "error", err)
+		}
+	})
 	mux.Handle("GET /result/", http.StripPrefix("/result/", http.FileServerFS(resultFiles)))
 	mux.HandleFunc("GET /result/scores", s.handleScores)
 

@@ -28,8 +28,8 @@ services:
     pull_policy: never
     environment:
       VALKEY_URL: valkey://valkey:6379/0
-      OPTION_A: Glaces
-      OPTION_B: Sorbets
+      OPTION_A: Cats
+      OPTION_B: Dogs
     ports:
       - "5000:8080"
     depends_on:
@@ -55,6 +55,8 @@ services:
     pull_policy: never
     environment:
       POSTGRES_URL: postgres://postgres:postgres@db:5432/postgres
+      OPTION_A: Cats
+      OPTION_B: Dogs
     ports:
       - "5001:4000"
     depends_on:
@@ -70,8 +72,8 @@ services:
     pull_policy: never
     environment:
       POSTGRES_URL: postgres://postgres:postgres@db:5432/postgres
-      OPTION_A: Glaces
-      OPTION_B: Sorbets
+      OPTION_A: Cats
+      OPTION_B: Dogs
     ports:
       - "5002:8080"
     depends_on:

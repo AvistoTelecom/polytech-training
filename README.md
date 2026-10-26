@@ -28,7 +28,7 @@ Chaque service est un module Go indépendant (`microservices/vote/`, `microservi
 | --- | --- | --- | --- |
 | `VALKEY_URL` | vote, worker | `valkey://valkey:6379/0` | URL de connexion à Valkey (`valkeys://` ou `rediss://` pour TLS) |
 | `POSTGRES_URL` | worker, result, monolith | `postgres://postgres:postgres@db:5432/postgres` | URL de connexion à PostgreSQL |
-| `OPTION_A`, `OPTION_B` | vote, monolith | `Glaces`, `Sorbets` | Libellés des deux options (par défaut `Glaces` / `Sorbets`) |
+| `OPTION_A`, `OPTION_B` | vote, result, monolith | `Cats`, `Dogs` | Libellés des deux options (par défaut `Cats` / `Dogs`) |
 | `PORT` | vote, result, monolith | `8080`, `4000` | Port d'écoute HTTP (par défaut `8080` pour vote et monolith, `4000` pour result) |
 
 Le worker expose un endpoint de santé sur `:8080/healthz`.
