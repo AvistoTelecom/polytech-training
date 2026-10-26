@@ -1,5 +1,6 @@
-Dockerfile
 .venv
 __pycache__
 voting-app.service
-compose.yaml
+
+# Go binaries
+/bin/

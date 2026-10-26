@@ -1,40 +1,42 @@
-var app = angular.module('catsvsdogs', []);
-var socket = io.connect();
-
 var bg1 = document.getElementById('background-stats-1');
 var bg2 = document.getElementById('background-stats-2');
+var aPercent = document.getElementById('a-percent');
+var bPercent = document.getElementById('b-percent');
+var total = document.getElementById('total');
 
-app.controller('statsCtrl', function($scope){
-  $scope.aPercent = 50;
-  $scope.bPercent = 50;
+var scores = new EventSource('scores');
 
-  var updateScores = function(){
-    socket.on('scores', function (json) {
-       data = JSON.parse(json);
-       var a = parseInt(data.a || 0);
-       var b = parseInt(data.b || 0);
-
-       var percentages = getPercentages(a, b);
-
-       bg1.style.width = percentages.a + "%";
-       bg2.style.width = percentages.b + "%";
-
-       $scope.$apply(function () {
-         $scope.aPercent = percentages.a;
-         $scope.bPercent = percentages.b;
-         $scope.total = a + b;
-       });
-    });
-  };
-
-  var init = function(){
-    document.body.style.opacity=1;
-    updateScores();
-  };
-  socket.on('message',function(data){
-    init();
-  });
+scores.addEventListener('open', function () {
+  document.body.style.opacity = 1;
 });
+
+scores.addEventListener('scores', function (e) {
+  var data = JSON.parse(e.data);
+  var a = parseInt(data.a || 0);
+  var b = parseInt(data.b || 0);
+
+  var percentages = getPercentages(a, b);
+
+  bg1.style.width = percentages.a + '%';
+  bg2.style.width = percentages.b + '%';
+
+  aPercent.textContent = percentages.a.toFixed(1);
+  bPercent.textContent = percentages.b.toFixed(1);
+  total.textContent = formatTotal(a + b);
+});
+
+scores.addEventListener('dberror', showError);
+scores.addEventListener('error', showError);
+
+function showError() {
+  total.textContent = 'Database connection error';
+}
+
+function formatTotal(n) {
+  if (n === 0) return 'No votes yet';
+  if (n === 1) return '1 vote';
+  return n + ' votes';
+}
 
 function getPercentages(a, b) {
   var result = {};
