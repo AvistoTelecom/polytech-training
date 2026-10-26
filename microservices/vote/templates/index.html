@@ -9,6 +9,7 @@
     <meta name="author" content="Tutum dev team">
     <link rel='stylesheet' href="/static/stylesheets/style.css" />
     <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/font-awesome/4.4.0/css/font-awesome.min.css">
+    {{if .Logs}}<link rel="stylesheet" href="/static/logs.css" />{{end}}
   </head>
   <body>
     <div id="content-container">
@@ -26,6 +27,7 @@
         </div>
       </div>
     </div>
+    {{if .Logs}}<script src="/static/logs.js" data-src="/logs"></script>{{end}}
     <script src="https://code.jquery.com/jquery-latest.min.js" type="text/javascript"></script>
     <script src="//cdnjs.cloudflare.com/ajax/libs/jquery-cookie/1.4.1/jquery.cookie.js"></script>
 

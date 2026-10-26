@@ -1,0 +1,42 @@
+body.logs-on {
+  position: relative;
+  height: 75vh;
+  overflow: hidden;
+}
+
+#app-logs {
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: 25vh;
+  z-index: 100;
+  display: flex;
+  flex-direction: column;
+  background: #0d1117;
+  color: #c9d1d9;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  border-top: 2px solid #30363d;
+}
+
+#app-logs .bar {
+  padding: 3px 10px;
+  background: #161b22;
+  color: #8b949e;
+  display: flex;
+  justify-content: space-between;
+}
+
+#app-logs pre {
+  flex: 1;
+  margin: 0;
+  padding: 6px 10px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+#app-logs .WARN { color: #d29922; }
+#app-logs .ERROR { color: #f85149; }
+#app-logs .DEBUG { color: #8b949e; }

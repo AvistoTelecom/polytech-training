@@ -23,36 +23,28 @@ import (
 //go:embed views
 var assets embed.FS
 
-const (
-	pollInterval    = time.Second
-	connectAttempts = 3
-)
+const pollInterval = time.Second
+
+var errNoDatabase = errors.New("no database: POSTGRES_URL is empty or invalid")
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	hub := setupLogging()
 
-	if err := run(); err != nil {
+	if err := run(hub); err != nil {
 		slog.Error("result stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(hub *logHub) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	postgresURL := os.Getenv("POSTGRES_URL")
-	if postgresURL == "" {
-		return errors.New("POSTGRES_URL env var is empty")
+	// Never block the startup on the database: the page reports the error and the logs explain it.
+	db := newPool(os.Getenv("POSTGRES_URL"))
+	if db != nil {
+		defer db.Close()
 	}
-
-	// Start the server only after a successful DB connection.
-	db, err := connectPostgres(ctx, postgresURL)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
 
 	b := newBroadcaster()
 	go pollScores(ctx, db, b)
@@ -67,7 +59,7 @@ func run() error {
 		return fmt.Errorf("parse template: %w", err)
 	}
 
-	page := options{OptionA: getenv("OPTION_A", "Cats"), OptionB: getenv("OPTION_B", "Dogs")}
+	page := options{OptionA: getenv("OPTION_A", "Cats"), OptionB: getenv("OPTION_B", "Dogs"), Logs: hub != nil}
 
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
@@ -80,36 +72,28 @@ func run() error {
 	mux.Handle("GET /", http.FileServerFS(views))
 	mux.Handle("GET /scores", b)
 
+	if hub != nil {
+		mux.Handle("GET /logs", hub)
+	}
+
 	return serve(ctx, ":"+getenv("PORT", "4000"), mux)
 }
 
-func connectPostgres(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, url)
+// newPool returns nil, after logging why, when the URL cannot be used. The pool connects lazily,
+// so an unreachable database only shows up as query errors, which pollScores reports.
+func newPool(url string) *pgxpool.Pool {
+	if url == "" {
+		slog.Error("POSTGRES_URL env var is empty", "example", "postgres://user:pass@db:5432/postgres")
+		return nil
+	}
+
+	pool, err := pgxpool.New(context.Background(), url)
 	if err != nil {
-		return nil, fmt.Errorf("parse POSTGRES_URL: %w", err)
+		slog.Error("Invalid POSTGRES_URL", "error", err)
+		return nil
 	}
 
-	for attempt := 1; ; attempt++ {
-		err = pool.Ping(ctx)
-		if err == nil {
-			slog.Info("Connected to db")
-			return pool, nil
-		}
-
-		slog.Warn("Waiting for db", "error", err)
-
-		if attempt == connectAttempts {
-			pool.Close()
-			return nil, fmt.Errorf("giving up, could not connect to database: %w", err)
-		}
-
-		select {
-		case <-ctx.Done():
-			pool.Close()
-			return nil, ctx.Err()
-		case <-time.After(time.Second):
-		}
-	}
+	return pool
 }
 
 // pollScores queries the vote counts every pollInterval and publishes them.
@@ -117,10 +101,27 @@ func pollScores(ctx context.Context, db *pgxpool.Pool, b *broadcaster) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	// Only log when the outcome changes, not every second.
+	var (
+		lastErr   string
+		connected bool
+	)
+
 	for {
 		s, err := queryScores(ctx, db)
-		if err != nil {
+
+		switch {
+		case err != nil && err.Error() != lastErr:
 			slog.Error("Error performing query", "error", err)
+
+			lastErr, connected = err.Error(), false
+		case err == nil && !connected:
+			slog.Info("Connected to db")
+
+			lastErr, connected = "", true
+		}
+
+		if err != nil {
 			b.publish(event{name: "dberror", data: "{}"})
 		} else {
 			data, _ := json.Marshal(s)
@@ -139,6 +140,7 @@ func pollScores(ctx context.Context, db *pgxpool.Pool, b *broadcaster) {
 type options struct {
 	OptionA string
 	OptionB string
+	Logs    bool
 }
 
 type scores struct {
@@ -147,6 +149,10 @@ type scores struct {
 }
 
 func queryScores(ctx context.Context, db *pgxpool.Pool) (scores, error) {
+	if db == nil {
+		return scores{}, errNoDatabase
+	}
+
 	rows, err := db.Query(ctx, "SELECT vote, COUNT(id) AS count FROM votes GROUP BY vote")
 	if err != nil {
 		return scores{}, err

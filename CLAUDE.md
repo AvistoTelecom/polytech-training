@@ -22,11 +22,15 @@ All three services are written in Go. Each one is its own module (`microservices
 
 Paths below such as `vote/` are relative to `microservices/`.
 
+## Log viewer and non-blocking startup
+
+For training purposes vote, result and monolith show their own logs in a terminal-style panel (bottom 25% of the page). `logs.go` (duplicated in each service) tees `slog` to stdout and an in-memory ring buffer streamed over SSE (`/logs`, or `/logs/stream` in the monolith); `logs.js`/`logs.css` build the panel. A bad or missing `VALKEY_URL`/`POSTGRES_URL` never stops these services from starting: they log the problem (visible in the panel) and keep serving, voting returns 503 until the connection works. The worker is unchanged (no UI, still exits on missing config).
+
 ## Configuration contract (env vars)
 
 - `VALKEY_URL` (vote, worker): parsed with `valkey.ParseURL`. The schemes are `valkey://`/`redis://`, or `valkeys://`/`rediss://` for TLS.
 - `POSTGRES_URL` (worker, result): parsed by pgx, for example `postgres://user:pass@db:5432/postgres`.
-- `OPTION_A`, `OPTION_B` (vote, result, monolith; labels only, defaults `Cats`/`Dogs`; result renders `views/index.html` as a template), `PORT` (vote defaults to 8080, result to 4000). The images run as non-root (ko's default base), so services must not listen on ports below 1024.
+- `OPTION_A`, `OPTION_B` (vote, result, monolith; labels only, defaults `Cats`/`Dogs`; result renders `views/index.html` as a template), `PORT` (vote defaults to 8080, result to 4000), `LOG_VIEWER` (vote, result, monolith; default on, `false`/`0`/`off`/`no` disables). The images run as non-root (ko's default base), so services must not listen on ports below 1024.
 
 `k8s/` and `terraform/` still use the old Python/.NET/Node-era names (`REDIS_CONNECTION_STRING`, `POSTGRESQL_CONNECTION_STRING`), Redis, and port 80 for vote. Migrating them is a separate step.
 
