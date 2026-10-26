@@ -67,6 +67,11 @@ func (b *broadcaster) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	ch := b.subscribe()
 	defer b.unsubscribe(ch)
 
+	// Send the headers now: the page waits for the stream to open.
+	if err := rc.Flush(); err != nil {
+		return
+	}
+
 	for {
 		select {
 		case <-r.Context().Done():

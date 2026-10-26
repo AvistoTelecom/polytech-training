@@ -26,17 +26,16 @@ import (
 //go:embed web
 var assets embed.FS
 
-const (
-	pollInterval = time.Second
-	// A new connection pool is lazy, so the database may still be starting: retry for a while.
-	connectAttempts = 10
-)
+const pollInterval = time.Second
+
+var errNoDatabase = errors.New("no database: POSTGRES_URL is empty or invalid")
 
 type page struct {
 	OptionA  string
 	OptionB  string
 	Hostname string
 	Vote     string
+	Logs     bool
 }
 
 type server struct {
@@ -45,6 +44,7 @@ type server struct {
 	optionA  string
 	optionB  string
 	hostname string
+	logs     bool
 }
 
 type scores struct {
@@ -53,32 +53,24 @@ type scores struct {
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	hub := setupLogging()
 
-	if err := run(); err != nil {
+	if err := run(hub); err != nil {
 		slog.Error("monolith stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(hub *logHub) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	postgresURL := os.Getenv("POSTGRES_URL")
-	if postgresURL == "" {
-		return errors.New("POSTGRES_URL env var is empty")
-	}
+	// Never block the startup on the database: the pages stay reachable and the logs explain what is wrong.
+	db := newPool(os.Getenv("POSTGRES_URL"))
+	if db != nil {
+		defer db.Close()
 
-	db, err := connectPostgres(ctx, postgresURL)
-	if err != nil {
-		return err
-	}
-	defer db.Close()
-
-	if _, err := db.Exec(ctx, "CREATE TABLE IF NOT EXISTS votes (id VARCHAR(255) NOT NULL UNIQUE, vote VARCHAR(255) NOT NULL)"); err != nil {
-		return fmt.Errorf("create votes table: %w", err)
+		go prepareDB(ctx, db)
 	}
 
 	tmpl, err := template.ParseFS(assets, "web/vote/index.html")
@@ -108,6 +100,7 @@ func run() error {
 		optionA:  getenv("OPTION_A", "Cats"),
 		optionB:  getenv("OPTION_B", "Dogs"),
 		hostname: hostname,
+		logs:     hub != nil,
 	}
 
 	mux := http.NewServeMux()
@@ -117,42 +110,63 @@ func run() error {
 	mux.HandleFunc("GET /result/{$}", func(w http.ResponseWriter, _ *http.Request) {
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
 
-		if err := resultTmpl.Execute(w, page{OptionA: s.optionA, OptionB: s.optionB}); err != nil {
+		if err := resultTmpl.Execute(w, page{OptionA: s.optionA, OptionB: s.optionB, Logs: s.logs}); err != nil {
 			slog.Error("Error rendering result page", "error", err)
 		}
 	})
 	mux.Handle("GET /result/", http.StripPrefix("/result/", http.FileServerFS(resultFiles)))
 	mux.HandleFunc("GET /result/scores", s.handleScores)
 
+	if hub != nil {
+		logFiles, err := fs.Sub(assets, "web/logs")
+		if err != nil {
+			return err
+		}
+
+		mux.Handle("GET /logs/stream", hub)
+		mux.Handle("GET /logs/", http.StripPrefix("/logs/", http.FileServerFS(logFiles)))
+	}
+
 	return serve(ctx, ":"+getenv("PORT", "8080"), mux)
 }
 
-func connectPostgres(ctx context.Context, url string) (*pgxpool.Pool, error) {
-	pool, err := pgxpool.New(ctx, url)
-	if err != nil {
-		return nil, fmt.Errorf("parse POSTGRES_URL: %w", err)
+// newPool returns nil, after logging why, when the URL cannot be used. The pool connects lazily,
+// so an unreachable database only shows up as query errors.
+func newPool(url string) *pgxpool.Pool {
+	if url == "" {
+		slog.Error("POSTGRES_URL env var is empty", "example", "postgres://user:pass@db:5432/postgres")
+		return nil
 	}
 
-	for attempt := 1; ; attempt++ {
-		err = pool.Ping(ctx)
+	pool, err := pgxpool.New(context.Background(), url)
+	if err != nil {
+		slog.Error("Invalid POSTGRES_URL", "error", err)
+		return nil
+	}
+
+	return pool
+}
+
+// prepareDB creates the votes table, retrying until the database answers.
+func prepareDB(ctx context.Context, db *pgxpool.Pool) {
+	delay := time.Second
+
+	for {
+		_, err := db.Exec(ctx, "CREATE TABLE IF NOT EXISTS votes (id VARCHAR(255) NOT NULL UNIQUE, vote VARCHAR(255) NOT NULL)")
 		if err == nil {
 			slog.Info("Connected to db")
-			return pool, nil
+			return
 		}
 
-		slog.Warn("Waiting for db", "error", err)
-
-		if attempt == connectAttempts {
-			pool.Close()
-			return nil, fmt.Errorf("giving up, could not connect to database: %w", err)
-		}
+		slog.Warn("Waiting for db", "error", err, "retry_in", delay)
 
 		select {
 		case <-ctx.Done():
-			pool.Close()
-			return nil, ctx.Err()
-		case <-time.After(time.Second):
+			return
+		case <-time.After(delay):
 		}
+
+		delay = min(delay*2, 10*time.Second)
 	}
 }
 
@@ -162,12 +176,19 @@ func (s *server) handleVote(w http.ResponseWriter, r *http.Request) {
 		voterID = newVoterID()
 	}
 
-	data := page{OptionA: s.optionA, OptionB: s.optionB, Hostname: s.hostname}
+	data := page{OptionA: s.optionA, OptionB: s.optionB, Hostname: s.hostname, Logs: s.logs}
 
 	if r.Method == http.MethodPost {
 		vote := r.PostFormValue("vote")
 		if !validVote(vote) {
 			http.Error(w, "invalid vote", http.StatusBadRequest)
+			return
+		}
+
+		if s.db == nil {
+			slog.Error("Vote refused, no database", "error", errNoDatabase)
+			http.Error(w, errNoDatabase.Error()+", see the logs", http.StatusServiceUnavailable)
+
 			return
 		}
 
@@ -213,16 +234,22 @@ func (s *server) handleScores(w http.ResponseWriter, r *http.Request) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 
+	var lastErr string // only log when the error changes, not every second
+
 	for {
 		name, data := "scores", "{}"
 
 		sc, err := queryScores(r.Context(), s.db)
 		if err != nil {
-			slog.Error("Error performing query", "error", err)
+			if err.Error() != lastErr {
+				slog.Error("Error performing query", "error", err)
+			}
 
+			lastErr = err.Error()
 			name = "dberror"
 		} else if b, err := json.Marshal(sc); err == nil {
 			data = string(b)
+			lastErr = ""
 		}
 
 		if _, err := fmt.Fprintf(w, "event: %s\ndata: %s\n\n", name, data); err != nil {
@@ -240,6 +267,10 @@ func (s *server) handleScores(w http.ResponseWriter, r *http.Request) {
 }
 
 func queryScores(ctx context.Context, db *pgxpool.Pool) (scores, error) {
+	if db == nil {
+		return scores{}, errNoDatabase
+	}
+
 	rows, err := db.Query(ctx, "SELECT vote, COUNT(id) AS count FROM votes GROUP BY vote")
 	if err != nil {
 		return scores{}, err

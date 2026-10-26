@@ -8,6 +8,7 @@
     <meta name="keywords" content="docker-compose, docker, stack">
     <meta name="author" content="Docker">
     <link rel='stylesheet' href='/stylesheets/style.css' />
+    {{if .Logs}}<link rel='stylesheet' href='/logs.css' />{{end}}
   </head>
   <body>
      <div id="background-stats">
@@ -35,5 +36,6 @@
       <span id="total"></span>
     </div>
     <script src="app.js"></script>
+    {{if .Logs}}<script src="/logs.js" data-src="/logs"></script>{{end}}
   </body>
 </html>

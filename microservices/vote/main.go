@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"sync/atomic"
 	"syscall"
 	"time"
 
@@ -36,40 +37,30 @@ type page struct {
 	OptionB  string
 	Hostname string
 	Vote     string
+	Logs     bool
 }
 
 type server struct {
-	valkey   valkey.Client
+	valkey   atomic.Pointer[valkey.Client] // nil until the background connection succeeds
 	tmpl     *template.Template
 	optionA  string
 	optionB  string
 	hostname string
+	logs     bool
 }
 
 func main() {
-	logger := slog.New(slog.NewTextHandler(os.Stdout, nil))
-	slog.SetDefault(logger)
+	hub := setupLogging()
 
-	if err := run(); err != nil {
+	if err := run(hub); err != nil {
 		slog.Error("vote stopped", "error", err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
+func run(hub *logHub) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-
-	valkeyURL := os.Getenv("VALKEY_URL")
-	if valkeyURL == "" {
-		return errors.New("VALKEY_URL env var is empty")
-	}
-
-	client, err := connectValkey(ctx, valkeyURL)
-	if err != nil {
-		return err
-	}
-	defer client.Close()
 
 	tmpl, err := template.ParseFS(assets, "templates/index.html")
 	if err != nil {
@@ -78,12 +69,21 @@ func run() error {
 
 	hostname, _ := os.Hostname()
 	s := &server{
-		valkey:   client,
 		tmpl:     tmpl,
 		optionA:  getenv("OPTION_A", "Cats"),
 		optionB:  getenv("OPTION_B", "Dogs"),
 		hostname: hostname,
+		logs:     hub != nil,
 	}
+
+	// Never block the startup on Valkey: the page and the logs must be reachable to debug a bad setup.
+	go s.connect(ctx, os.Getenv("VALKEY_URL"))
+
+	defer func() {
+		if client := s.valkey.Load(); client != nil {
+			(*client).Close()
+		}
+	}()
 
 	static, err := fs.Sub(assets, "static")
 	if err != nil {
@@ -95,7 +95,30 @@ func run() error {
 	mux.HandleFunc("GET /{$}", s.handleIndex)
 	mux.HandleFunc("POST /{$}", s.handleIndex)
 
+	if hub != nil {
+		mux.Handle("GET /logs", hub)
+	}
+
 	return serve(ctx, ":"+getenv("PORT", "8080"), mux)
+}
+
+// connect connects to Valkey in the background and logs why it cannot when the setup is wrong.
+func (s *server) connect(ctx context.Context, url string) {
+	if url == "" {
+		slog.Error("VALKEY_URL env var is empty, votes cannot be recorded", "example", "valkey://valkey:6379/0")
+		return
+	}
+
+	client, err := connectValkey(ctx, url)
+	if err != nil {
+		if !errors.Is(err, context.Canceled) {
+			slog.Error("Giving up on valkey, votes cannot be recorded", "error", err)
+		}
+
+		return
+	}
+
+	s.valkey.Store(&client)
 }
 
 // connectValkey retries with exponential backoff until Valkey answers a PING.
@@ -137,12 +160,20 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 		voterID = newVoterID()
 	}
 
-	data := page{OptionA: s.optionA, OptionB: s.optionB, Hostname: s.hostname}
+	data := page{OptionA: s.optionA, OptionB: s.optionB, Hostname: s.hostname, Logs: s.logs}
 
 	if r.Method == http.MethodPost {
 		vote := r.PostFormValue("vote")
 		if !validVote(vote) {
 			http.Error(w, "invalid vote", http.StatusBadRequest)
+			return
+		}
+
+		client := s.valkey.Load()
+		if client == nil {
+			slog.Error("Vote refused, valkey is not connected")
+			http.Error(w, "valkey is not connected yet, see the logs", http.StatusServiceUnavailable)
+
 			return
 		}
 
@@ -152,8 +183,8 @@ func (s *server) handleIndex(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		cmd := s.valkey.B().Rpush().Key(votesKey).Element(string(payload)).Build()
-		if err := s.valkey.Do(r.Context(), cmd).Error(); err != nil {
+		cmd := (*client).B().Rpush().Key(votesKey).Element(string(payload)).Build()
+		if err := (*client).Do(r.Context(), cmd).Error(); err != nil {
 			slog.Error("push vote", "error", err)
 			http.Error(w, "could not record vote", http.StatusServiceUnavailable)
 
