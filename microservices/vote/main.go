@@ -80,8 +80,8 @@ func run() error {
 	s := &server{
 		valkey:   client,
 		tmpl:     tmpl,
-		optionA:  getenv("OPTION_A", "Glaces"),
-		optionB:  getenv("OPTION_B", "Sorbets"),
+		optionA:  getenv("OPTION_A", "Cats"),
+		optionB:  getenv("OPTION_B", "Dogs"),
 		hostname: hostname,
 	}
 

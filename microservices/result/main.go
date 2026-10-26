@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"html/template"
 	"io/fs"
 	"log/slog"
 	"net"
@@ -61,7 +62,21 @@ func run() error {
 		return err
 	}
 
+	tmpl, err := template.ParseFS(assets, "views/index.html")
+	if err != nil {
+		return fmt.Errorf("parse template: %w", err)
+	}
+
+	page := options{OptionA: getenv("OPTION_A", "Cats"), OptionB: getenv("OPTION_B", "Dogs")}
+
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /{$}", func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+
+		if err := tmpl.Execute(w, page); err != nil {
+			slog.Error("Error rendering page", "error", err)
+		}
+	})
 	mux.Handle("GET /", http.FileServerFS(views))
 	mux.Handle("GET /scores", b)
 
@@ -118,6 +133,12 @@ func pollScores(ctx context.Context, db *pgxpool.Pool, b *broadcaster) {
 		case <-ticker.C:
 		}
 	}
+}
+
+// options holds the labels of the two choices, shown on the page.
+type options struct {
+	OptionA string
+	OptionB string
 }
 
 type scores struct {

@@ -2,7 +2,7 @@
 <html>
   <head>
     <meta charset="utf-8">
-    <title>Cats vs Dogs -- Result</title>
+    <title>{{.OptionA}} vs {{.OptionB}} -- Result</title>
     <base href="/index.html">
     <meta name = "viewport" content = "width=device-width, initial-scale = 1.0">
     <meta name="keywords" content="docker-compose, docker, stack">
@@ -19,13 +19,13 @@
     <div id="content-container">
       <div id="content-container-center">
         <div id="choice">
-          <div class="choice cats">
-            <div class="label">Cats</div>
+          <div class="choice a">
+            <div class="label">{{.OptionA}}</div>
             <div class="stat"><span id="a-percent">50</span>%</div>
           </div>
           <div class="divider"></div>
-          <div class="choice dogs">
-            <div class="label">Dogs</div>
+          <div class="choice b">
+            <div class="label">{{.OptionB}}</div>
             <div class="stat"><span id="b-percent">50</span>%</div>
           </div>
         </div>

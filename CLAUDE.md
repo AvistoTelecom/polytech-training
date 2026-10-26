@@ -26,7 +26,7 @@ Paths below such as `vote/` are relative to `microservices/`.
 
 - `VALKEY_URL` (vote, worker): parsed with `valkey.ParseURL`. The schemes are `valkey://`/`redis://`, or `valkeys://`/`rediss://` for TLS.
 - `POSTGRES_URL` (worker, result): parsed by pgx, for example `postgres://user:pass@db:5432/postgres`.
-- `OPTION_A`, `OPTION_B` (vote), `PORT` (vote defaults to 8080, result to 4000). The images run as non-root (ko's default base), so services must not listen on ports below 1024.
+- `OPTION_A`, `OPTION_B` (vote, result, monolith; labels only, defaults `Cats`/`Dogs`; result renders `views/index.html` as a template), `PORT` (vote defaults to 8080, result to 4000). The images run as non-root (ko's default base), so services must not listen on ports below 1024.
 
 `k8s/` and `terraform/` still use the old Python/.NET/Node-era names (`REDIS_CONNECTION_STRING`, `POSTGRESQL_CONNECTION_STRING`), Redis, and port 80 for vote. Migrating them is a separate step.
 
