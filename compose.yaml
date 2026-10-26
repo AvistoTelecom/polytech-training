@@ -1,0 +1,62 @@
+# Full stack. App images are built with `make build` (ko), then `make dev` or `make up`.
+services:
+  valkey:
+    image: valkey/valkey:8-alpine
+    healthcheck:
+      test: ["CMD", "valkey-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_PASSWORD: postgres
+    volumes:
+      - db-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD", "pg_isready", "-U", "postgres"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+  vote:
+    image: ${REGISTRY:-rgy.k8s.devops-svc-ag.com/polytech}/vote:${TAG:-dev}
+    pull_policy: never
+    environment:
+      VALKEY_URL: valkey://valkey:6379/0
+      OPTION_A: Glaces
+      OPTION_B: Sorbets
+    ports:
+      - "5000:8080"
+    depends_on:
+      valkey:
+        condition: service_healthy
+
+  worker:
+    image: ${REGISTRY:-rgy.k8s.devops-svc-ag.com/polytech}/worker:${TAG:-dev}
+    pull_policy: never
+    environment:
+      VALKEY_URL: valkey://valkey:6379/0
+      POSTGRES_URL: postgres://postgres:postgres@db:5432/postgres
+    depends_on:
+      valkey:
+        condition: service_healthy
+      db:
+        condition: service_healthy
+
+  result:
+    image: ${REGISTRY:-rgy.k8s.devops-svc-ag.com/polytech}/result:${TAG:-dev}
+    pull_policy: never
+    environment:
+      POSTGRES_URL: postgres://postgres:postgres@db:5432/postgres
+    ports:
+      - "5001:4000"
+    depends_on:
+      db:
+        condition: service_healthy
+      worker:
+        condition: service_started
+
+volumes:
+  db-data:
