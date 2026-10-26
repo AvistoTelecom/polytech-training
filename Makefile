@@ -1,7 +1,19 @@
-# Each service (vote, worker, result) is its own Go module, so every Go and ko
-# command runs from inside the service directory.
+# Each service is its own Go module, so every Go and ko command runs from inside the
+# service directory. vote, worker and result live in microservices/; monolith is the
+# single-image variant (vote + result on one Postgres-only server).
+#
+# Every target takes an optional scope: `make dev microservices`, `make dev monolith`.
+# Without one, the target applies to both.
 
-SERVICES := vote worker result
+SCOPES := microservices monolith
+SELECTED := $(or $(filter $(SCOPES),$(MAKECMDGOALS)),$(SCOPES))
+WITH_MICROSERVICES := $(filter microservices,$(SELECTED))
+WITH_MONOLITH := $(filter monolith,$(SELECTED))
+
+SERVICES := $(if $(WITH_MICROSERVICES),microservices/vote microservices/worker microservices/result) $(if $(WITH_MONOLITH),monolith)
+# Compose services of the scope (db is shared and has no profile).
+COMPOSE_SERVICES := $(if $(WITH_MICROSERVICES),valkey vote worker result) $(if $(WITH_MONOLITH),monolith)
+PROFILES := $(foreach s,$(SELECTED),--profile $(s))
 
 GO ?= go
 COMPOSE ?= docker compose
@@ -35,16 +47,20 @@ endef
 
 .DEFAULT_GOAL := help
 
-.PHONY: help build-go build push dev up down logs test lint lint-fix fmt audit tidy tidy-check check clean
+.PHONY: $(SCOPES) help build-go build push dev up down logs test lint lint-fix fmt audit tidy tidy-check check clean
+
+# Scopes are only read through MAKECMDGOALS, they do nothing by themselves.
+$(SCOPES):
+	@:
 
 ## help: Show this help message
 help:
-	@echo "Usage: make [target] [REGISTRY=...] [TAG=...]"
+	@echo "Usage: make [target] [microservices|monolith] [REGISTRY=...] [TAG=...]"; echo "Without a scope, the target applies to both."
 	@awk 'sub(/^## /, "") { split($$0, a, ": "); printf "  %-10s %s\n", a[1], substr($$0, length(a[1]) + 3) }' $(MAKEFILE_LIST)
 
 ## build-go: Build the Go binaries into ./bin
 build-go:
-	$(call each_service,$(GO) build -o $(BIN)/$$s .)
+	$(call each_service,$(GO) build -o $(BIN)/$$(basename $$s) .)
 
 ## build: Build the container images with ko and load them into the local Docker daemon
 build:
@@ -58,23 +74,23 @@ push:
 ## dev: Build the images, start the stack, print its URLs and follow the logs
 dev: build up
 	@echo "Following logs (Ctrl+C stops following, the stack keeps running; 'make down' stops it)"
-	@$(COMPOSE) logs -f --tail=0 || true
+	@$(COMPOSE) $(PROFILES) logs -f --tail=0 $(COMPOSE_SERVICES) || true
 
 ## up: Start the full stack in the background with the existing images
 up:
-	REGISTRY='$(REGISTRY)' TAG='$(TAG)' $(COMPOSE) up -d --wait
+	REGISTRY='$(REGISTRY)' TAG='$(TAG)' $(COMPOSE) $(PROFILES) up -d --wait
 	@echo
-	@echo "  Vote:   http://localhost:5000"
-	@echo "  Result: http://localhost:5001"
+	@$(if $(WITH_MICROSERVICES),echo "  Microservices  vote: http://localhost:5000  result: http://localhost:5001";)
+	@$(if $(WITH_MONOLITH),echo "  Monolith       vote: http://localhost:5002/vote/  result: http://localhost:5002/result/";)
 	@echo
 
 ## down: Stop the stack (keeps the database volume)
 down:
-	$(COMPOSE) down
+	$(if $(and $(WITH_MICROSERVICES),$(WITH_MONOLITH)),$(COMPOSE) $(PROFILES) down,$(COMPOSE) $(PROFILES) rm -sf $(COMPOSE_SERVICES))
 
 ## logs: Follow the logs of the stack
 logs:
-	$(COMPOSE) logs -f
+	$(COMPOSE) $(PROFILES) logs -f $(COMPOSE_SERVICES)
 
 ## test: Run the tests (race detector and shuffled order by default)
 test:
@@ -110,4 +126,4 @@ check: lint test audit tidy-check
 ## clean: Remove binaries, then stop the stack and delete its volumes
 clean:
 	rm -rf $(BIN)
-	-$(COMPOSE) down -v
+	-$(if $(and $(WITH_MICROSERVICES),$(WITH_MONOLITH)),$(COMPOSE) $(PROFILES) down -v,$(COMPOSE) $(PROFILES) rm -sfv $(COMPOSE_SERVICES))
