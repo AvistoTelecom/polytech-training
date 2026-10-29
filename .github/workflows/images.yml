@@ -1,0 +1,59 @@
+name: images
+
+# PRs only build; pushes to main publish :latest and tags (v*) publish :<tag> to GHCR.
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  images:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        dir: [microservices/vote, microservices/worker, microservices/result, monolith]
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: ${{ matrix.dir }}/go.mod
+          cache-dependency-path: ${{ matrix.dir }}/go.sum
+
+      - uses: ko-build/setup-ko@v0.9
+        with:
+          version: v0.19.1
+
+      - name: Log in to GHCR
+        if: github.event_name != 'pull_request'
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | ko login ghcr.io --username "${{ github.actor }}" --password-stdin
+
+      - name: Build and publish
+        working-directory: ${{ matrix.dir }}
+        env:
+          REPO: ${{ github.repository }}
+          PUBLISH: ${{ github.event_name != 'pull_request' }}
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || 'latest' }}
+        run: |
+          # GHCR requires a lowercase repository name; ko names images <repo>/<dir>.
+          export KO_DOCKER_REPO="ghcr.io/${REPO,,}"
+          if [ "$PUBLISH" = true ]; then
+            ko build --base-import-paths --sbom=none --tags="$TAG" \
+              --platform=linux/amd64,linux/arm64 .
+          else
+            # Build only: no push, nothing leaves the runner.
+            ko build --base-import-paths --sbom=none --push=false \
+              --platform=linux/amd64,linux/arm64 .
+          fi
