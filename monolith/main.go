@@ -28,8 +28,6 @@ var assets embed.FS
 
 const pollInterval = time.Second
 
-var errNoDatabase = errors.New("no database: POSTGRES_URL is empty or invalid")
-
 type page struct {
 	OptionA  string
 	OptionB  string
@@ -65,13 +63,14 @@ func run(hub *logHub) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Never block the startup on the database: the pages stay reachable and the logs explain what is wrong.
-	db := newPool(os.Getenv("POSTGRES_URL"))
-	if db != nil {
-		defer db.Close()
-
-		go prepareDB(ctx, db)
+	db, err := newPool(os.Getenv("POSTGRES_URL"))
+	if err != nil {
+		return err
 	}
+	defer db.Close()
+
+	// Do not wait for the database to answer: the pages and the logs must be reachable while it starts.
+	go prepareDB(ctx, db)
 
 	tmpl, err := template.ParseFS(assets, "web/vote/index.html")
 	if err != nil {
@@ -130,21 +129,19 @@ func run(hub *logHub) error {
 	return serve(ctx, ":"+getenv("PORT", "8080"), mux)
 }
 
-// newPool returns nil, after logging why, when the URL cannot be used. The pool connects lazily,
+// newPool fails when the URL is missing or invalid. The pool connects lazily,
 // so an unreachable database only shows up as query errors.
-func newPool(url string) *pgxpool.Pool {
+func newPool(url string) (*pgxpool.Pool, error) {
 	if url == "" {
-		slog.Error("POSTGRES_URL env var is empty", "example", "postgres://user:pass@db:5432/postgres")
-		return nil
+		return nil, errors.New("POSTGRES_URL env var is empty, example: postgres://user:pass@db:5432/postgres")
 	}
 
 	pool, err := pgxpool.New(context.Background(), url)
 	if err != nil {
-		slog.Error("Invalid POSTGRES_URL", "error", err)
-		return nil
+		return nil, fmt.Errorf("invalid POSTGRES_URL: %w", err)
 	}
 
-	return pool
+	return pool, nil
 }
 
 // prepareDB creates the votes table, retrying until the database answers.
@@ -182,13 +179,6 @@ func (s *server) handleVote(w http.ResponseWriter, r *http.Request) {
 		vote := r.PostFormValue("vote")
 		if !validVote(vote) {
 			http.Error(w, "invalid vote", http.StatusBadRequest)
-			return
-		}
-
-		if s.db == nil {
-			slog.Error("Vote refused, no database", "error", errNoDatabase)
-			http.Error(w, errNoDatabase.Error()+", see the logs", http.StatusServiceUnavailable)
-
 			return
 		}
 
@@ -267,10 +257,6 @@ func (s *server) handleScores(w http.ResponseWriter, r *http.Request) {
 }
 
 func queryScores(ctx context.Context, db *pgxpool.Pool) (scores, error) {
-	if db == nil {
-		return scores{}, errNoDatabase
-	}
-
 	rows, err := db.Query(ctx, "SELECT vote, COUNT(id) AS count FROM votes GROUP BY vote")
 	if err != nil {
 		return scores{}, err

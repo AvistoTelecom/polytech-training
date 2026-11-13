@@ -25,8 +25,6 @@ var assets embed.FS
 
 const pollInterval = time.Second
 
-var errNoDatabase = errors.New("no database: POSTGRES_URL is empty or invalid")
-
 func main() {
 	hub := setupLogging()
 
@@ -40,11 +38,11 @@ func run(hub *logHub) error {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 
-	// Never block the startup on the database: the page reports the error and the logs explain it.
-	db := newPool(os.Getenv("POSTGRES_URL"))
-	if db != nil {
-		defer db.Close()
+	db, err := newPool(os.Getenv("POSTGRES_URL"))
+	if err != nil {
+		return err
 	}
+	defer db.Close()
 
 	b := newBroadcaster()
 	go pollScores(ctx, db, b)
@@ -79,21 +77,19 @@ func run(hub *logHub) error {
 	return serve(ctx, ":"+getenv("PORT", "4000"), mux)
 }
 
-// newPool returns nil, after logging why, when the URL cannot be used. The pool connects lazily,
+// newPool fails when the URL is missing or invalid. The pool connects lazily,
 // so an unreachable database only shows up as query errors, which pollScores reports.
-func newPool(url string) *pgxpool.Pool {
+func newPool(url string) (*pgxpool.Pool, error) {
 	if url == "" {
-		slog.Error("POSTGRES_URL env var is empty", "example", "postgres://user:pass@db:5432/postgres")
-		return nil
+		return nil, errors.New("POSTGRES_URL env var is empty, example: postgres://user:pass@db:5432/postgres")
 	}
 
 	pool, err := pgxpool.New(context.Background(), url)
 	if err != nil {
-		slog.Error("Invalid POSTGRES_URL", "error", err)
-		return nil
+		return nil, fmt.Errorf("invalid POSTGRES_URL: %w", err)
 	}
 
-	return pool
+	return pool, nil
 }
 
 // pollScores queries the vote counts every pollInterval and publishes them.
@@ -149,10 +145,6 @@ type scores struct {
 }
 
 func queryScores(ctx context.Context, db *pgxpool.Pool) (scores, error) {
-	if db == nil {
-		return scores{}, errNoDatabase
-	}
-
 	rows, err := db.Query(ctx, "SELECT vote, COUNT(id) AS count FROM votes GROUP BY vote")
 	if err != nil {
 		return scores{}, err

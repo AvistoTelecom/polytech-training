@@ -76,8 +76,18 @@ func run(hub *logHub) error {
 		logs:     hub != nil,
 	}
 
-	// Never block the startup on Valkey: the page and the logs must be reachable to debug a bad setup.
-	go s.connect(ctx, os.Getenv("VALKEY_URL"))
+	valkeyURL := os.Getenv("VALKEY_URL")
+	if valkeyURL == "" {
+		return errors.New("VALKEY_URL env var is empty, example: valkey://valkey:6379/0")
+	}
+
+	opts, err := valkey.ParseURL(valkeyURL)
+	if err != nil {
+		return fmt.Errorf("parse VALKEY_URL: %w", err)
+	}
+
+	// Do not wait for Valkey to answer: the page and the logs must be reachable while it starts.
+	go s.connect(ctx, opts)
 
 	defer func() {
 		if client := s.valkey.Load(); client != nil {
@@ -102,19 +112,10 @@ func run(hub *logHub) error {
 	return serve(ctx, ":"+getenv("PORT", "8080"), mux)
 }
 
-// connect connects to Valkey in the background and logs why it cannot when the setup is wrong.
-func (s *server) connect(ctx context.Context, url string) {
-	if url == "" {
-		slog.Error("VALKEY_URL env var is empty, votes cannot be recorded", "example", "valkey://valkey:6379/0")
-		return
-	}
-
-	client, err := connectValkey(ctx, url)
+// connect connects to Valkey in the background, until it succeeds or ctx is cancelled.
+func (s *server) connect(ctx context.Context, opts valkey.ClientOption) {
+	client, err := connectValkey(ctx, opts)
 	if err != nil {
-		if !errors.Is(err, context.Canceled) {
-			slog.Error("Giving up on valkey, votes cannot be recorded", "error", err)
-		}
-
 		return
 	}
 
@@ -122,12 +123,7 @@ func (s *server) connect(ctx context.Context, url string) {
 }
 
 // connectValkey retries with exponential backoff until Valkey answers a PING.
-func connectValkey(ctx context.Context, url string) (valkey.Client, error) {
-	opts, err := valkey.ParseURL(url)
-	if err != nil {
-		return nil, fmt.Errorf("parse VALKEY_URL: %w", err)
-	}
-
+func connectValkey(ctx context.Context, opts valkey.ClientOption) (valkey.Client, error) {
 	delay := time.Second
 
 	for {
