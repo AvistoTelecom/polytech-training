@@ -81,7 +81,7 @@ func run(hub *logHub) error {
 // so an unreachable database only shows up as query errors, which pollScores reports.
 func newPool(url string) (*pgxpool.Pool, error) {
 	if url == "" {
-		return nil, errors.New("POSTGRES_URL env var is empty, example: postgres://user:pass@db:5432/postgres")
+		return nil, errors.New("POSTGRES_URL env var is empty, example: postgres://user:pass@127.0.0.1:5432/database")
 	}
 
 	pool, err := pgxpool.New(context.Background(), url)

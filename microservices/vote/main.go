@@ -78,7 +78,7 @@ func run(hub *logHub) error {
 
 	valkeyURL := os.Getenv("VALKEY_URL")
 	if valkeyURL == "" {
-		return errors.New("VALKEY_URL env var is empty, example: valkey://valkey:6379/0")
+		return errors.New("VALKEY_URL env var is empty, example: valkey://127.0.0.1:6379/0")
 	}
 
 	opts, err := valkey.ParseURL(valkeyURL)
