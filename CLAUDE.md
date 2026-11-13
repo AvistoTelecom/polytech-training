@@ -22,9 +22,9 @@ All three services are written in Go. Each one is its own module (`microservices
 
 Paths below such as `vote/` are relative to `microservices/`.
 
-## Log viewer and non-blocking startup
+## Log viewer and startup
 
-For training purposes vote, result and monolith show their own logs in a terminal-style panel (bottom 25% of the page). `logs.go` (duplicated in each service) tees `slog` to stdout and an in-memory ring buffer streamed over SSE (`/logs`, or `/logs/stream` in the monolith); `logs.js`/`logs.css` build the panel. A bad or missing `VALKEY_URL`/`POSTGRES_URL` never stops these services from starting: they log the problem (visible in the panel) and keep serving, voting returns 503 until the connection works. The worker is unchanged (no UI, still exits on missing config).
+For training purposes vote, result and monolith show their own logs in a terminal-style panel (bottom 25% of the page). `logs.go` (duplicated in each service) tees `slog` to stdout and an in-memory ring buffer streamed over SSE (`/logs`, or `/logs/stream` in the monolith); `logs.js`/`logs.css` build the panel. A missing or unparseable `VALKEY_URL`/`POSTGRES_URL` makes these services exit at startup. An unreachable Valkey/Postgres does not: they keep serving, log the problem (visible in the panel), and voting returns 503 until the connection works.
 
 ## Configuration contract (env vars)
 
