@@ -60,6 +60,10 @@ export POSTGRES_URL=postgres://postgres:postgres@localhost:5432/postgres
 cd microservices/vote && go run .
 ```
 
+## Test de charge
+
+`load-testing/` contient un script [k6](https://grafana.com/docs/k6/latest/) qui simule des votants, voir [load-testing/README.md](load-testing/README.md).
+
 ## Notes
 
 L'application de vote n'accepte qu'un seul vote par navigateur client. Elle n'enregistre pas de votes supplémentaires si un vote a déjà été soumis par un client.
