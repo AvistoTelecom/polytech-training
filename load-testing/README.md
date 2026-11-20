@@ -5,14 +5,10 @@
 Lancez-le depuis la racine du dépôt avec l'image Docker de k6, sans rien installer, en remplaçant `<url>` par l'URL de l'application (sans `/` final) :
 
 ```sh
-docker run --rm -i -e BASE_URL=<url> grafana/k6 run - <load-testing/vote.js
-```
-
-Sous PowerShell, qui ne connaît pas `<`, envoyez le script par un tube :
-
-```powershell
 cat load-testing/vote.js | docker run --rm -i -e BASE_URL=<url> grafana/k6 run -
 ```
+
+La même commande fonctionne sous Linux, macOS et Windows (PowerShell).
 
 En local, avec `make dev monolith`, l'URL est `http://host.docker.internal:5002` (Docker Desktop) ou, sous Linux, ajoutez `--network host` et utilisez `http://localhost:5002`.
 

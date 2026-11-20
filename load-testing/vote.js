@@ -1,5 +1,5 @@
 // Each virtual user (VU) opens the vote page, votes at random, then waits one second.
-// Usage: docker run --rm -i -e BASE_URL=<url> grafana/k6 run - <load-testing/vote.js
+// Usage: cat load-testing/vote.js | docker run --rm -i -e BASE_URL=<url> grafana/k6 run -
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
