@@ -17,6 +17,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -132,6 +133,9 @@ func run(hub *logHub) error {
 // newPool fails when the URL is missing or invalid. The pool connects lazily,
 // so an unreachable database only shows up as query errors.
 func newPool(url string) (*pgxpool.Pool, error) {
+	// A URL copied from a PDF often carries line breaks or spaces where the text wrapped.
+	url = strings.Join(strings.Fields(url), "")
+
 	if url == "" {
 		return nil, errors.New("POSTGRES_URL env var is empty, example: postgres://user:pass@127.0.0.1:5432/database")
 	}
