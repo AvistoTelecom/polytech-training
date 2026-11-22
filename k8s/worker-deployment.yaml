@@ -15,19 +15,29 @@ spec:
         app: worker
     spec:
       containers:
-        - image: rgy.k8s.devops-svc-ag.com/polytech/worker:1.1.1
+        - image: ghcr.io/avistotelecom/polytech-training/worker:latest
           name: worker
-          imagePullPolicy: Always
+          ports:
+            - containerPort: 8080
+              name: healthz
+          # The worker can take a while to start: liveness and readiness only run once
+          # the startup probe succeeds, and it allows up to 12 x 5 s = 60 s.
+          startupProbe:
+            httpGet:
+              path: /healthz
+              port: healthz
+            periodSeconds: 5
+            failureThreshold: 12
           readinessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: healthz
           livenessProbe:
             httpGet:
               path: /healthz
-              port: 8080
+              port: healthz
           env:
-            - name: REDIS_CONNECTION_STRING
-              value: "redis"
-            - name: POSTGRESQL_CONNECTION_STRING
-              value: "Server=db;Username=postgres;Password=postgres"
+            - name: VALKEY_URL
+              value: valkey://valkey:6379/0
+            - name: POSTGRES_URL
+              value: postgres://postgres:postgres@db:5432/postgres

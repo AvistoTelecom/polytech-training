@@ -32,7 +32,7 @@ For training purposes vote, result and monolith show their own logs in a termina
 - `POSTGRES_URL` (worker, result): parsed by pgx, for example `postgres://user:pass@db:5432/postgres`.
 - `OPTION_A`, `OPTION_B` (vote, result, monolith; labels only, defaults `Cats`/`Dogs`; result renders `views/index.html` as a template), `PORT` (vote defaults to 8080, result to 4000), `LOG_VIEWER` (vote, result, monolith; default on, `false`/`0`/`off`/`no` disables). The images run as non-root (ko's default base), so services must not listen on ports below 1024.
 
-`k8s/` and `terraform/` still use the old Python/.NET/Node-era names (`REDIS_CONNECTION_STRING`, `POSTGRESQL_CONNECTION_STRING`), Redis, and port 80 for vote. Migrating them is a separate step.
+`terraform/` still uses the old Python/.NET/Node-era names (`REDIS_CONNECTION_STRING`, `POSTGRESQL_CONNECTION_STRING`), Redis, and port 80 for vote. Migrating it is a separate step.
 
 ## Commands
 
@@ -52,5 +52,5 @@ There are no Dockerfiles: ko builds the images, and the `//go:embed` assets live
 
 ## Deployment
 
-- **k8s/**: plain manifests that you apply with `kubectl apply -f k8s/`. They include Deployments for vote/worker/result, StatefulSets with Services for redis and Postgres, and images from `rgy.k8s.devops-svc-ag.com/polytech/*`. When you bump an app version, update the image tag here.
+- **k8s/**: plain manifests that you apply with `kubectl apply -f k8s/` (TP4, on a managed cluster at any provider, minikube as a fallback; keep them provider-agnostic). They include Deployments for vote/worker/result and StatefulSets with Services for Valkey and Postgres. Images use `ghcr.io/avistotelecom/polytech-training/<svc>:latest` (published from `main`). TP4 has students update the worker to `1.1.0` (30 s warm-up before `/healthz` answers, to watch a rolling update) then `2.0.0` (blocks before serving `/healthz`, to trigger a failed update and a rollback). Those two tags are cut from side branches, not from `main`, so do not reuse `1.1.0` or `2.0.0` for a release of `main`. The worker's `startupProbe` allows 60 s, which the 30 s warm-up must stay under.
 - **terraform/**: Azure (azurerm ~>4.0). It sets up the resource group, a VNet with a platform subnet and an App Service–delegated subnet, a Basic Redis cache behind a private endpoint with a private DNS zone, and a Linux Web App that runs only the `vote` image with VNet integration. Resource names get a random suffix. Run `terraform init/plan/apply` from `terraform/`.

@@ -15,22 +15,22 @@ spec:
         app: vote
     spec:
       containers:
-        - image: rgy.k8s.devops-svc-ag.com/polytech/vote:1.0.1
+        - image: ghcr.io/avistotelecom/polytech-training/vote:latest
           name: vote
           ports:
-            - containerPort: 80
+            - containerPort: 8080
               name: http
           readinessProbe:
             httpGet:
               path: /
-              port: 80
+              port: http
           livenessProbe:
             httpGet:
               path: /
-              port: 80
+              port: http
           env:
-            - name: REDIS_CONNECTION_STRING
-              value: redis://redis
+            - name: VALKEY_URL
+              value: valkey://valkey:6379/0
             - name: OPTION_A
               value: Cats
             - name: OPTION_B
