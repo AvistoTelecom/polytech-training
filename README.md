@@ -30,6 +30,9 @@ Chaque service est un module Go indépendant (`microservices/vote/`, `microservi
 | `POSTGRES_URL` | worker, result, monolith | `postgres://postgres:postgres@db:5432/postgres` | URL de connexion à PostgreSQL |
 | `OPTION_A`, `OPTION_B` | vote, result, monolith | `Cats`, `Dogs` | Libellés des deux options (par défaut `Cats` / `Dogs`) |
 | `PORT` | vote, result, monolith | `8080`, `4000` | Port d'écoute HTTP (par défaut `8080` pour vote et monolith, `4000` pour result) |
+| `FEATURE_CACHE_WARMUP` | worker | `true` | Préchauffe le cache (30 s) avant de se déclarer en bonne santé (désactivé par défaut) |
+| `FEATURE_BATCH_INSERT` | worker | `true` | Expérimental : enregistre les votes par lots de `BATCH_SIZE` (désactivé par défaut) |
+| `BATCH_SIZE` | worker | `100` | Taille des lots de `FEATURE_BATCH_INSERT` (par défaut `100`) |
 
 Le worker expose un endpoint de santé sur `:8080/healthz`.
 

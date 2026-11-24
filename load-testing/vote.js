@@ -1,5 +1,6 @@
 // Each virtual user (VU) opens the vote page, votes at random, then waits one second.
 // Usage: cat load-testing/vote.js | docker run --rm -i -e BASE_URL=<url> grafana/k6 run -
+// Add -e VOTE_PATH=/ to target the vote microservice instead of the monolith.
 import http from 'k6/http';
 import { check, sleep } from 'k6';
 
@@ -11,7 +12,8 @@ export const options = {
   ],
 };
 
-const url = `${__ENV.BASE_URL}/vote/`;
+// VOTE_PATH is /vote/ for the monolith (default), / for the vote microservice.
+const url = `${__ENV.BASE_URL}${__ENV.VOTE_PATH || '/vote/'}`;
 
 export default function () {
   http.get(url);

@@ -10,9 +10,11 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/valkey-io/valkey-go"
 )
@@ -21,6 +23,10 @@ const (
 	votesKey    = "votes"
 	popTimeout  = 5 * time.Second
 	healthzAddr = ":8080"
+	warmUp      = 30 * time.Second
+
+	upsertVote = `INSERT INTO votes (id, vote) VALUES ($1, $2)
+		ON CONFLICT (id) DO UPDATE SET vote = EXCLUDED.vote`
 )
 
 type ballot struct {
@@ -53,6 +59,18 @@ func run() error {
 		return errors.New("VALKEY_URL env var is empty")
 	}
 
+	// Feature flag: prepare the cache before reporting healthy. The warm-up is simulated (the
+	// worker only waits), which makes a rolling update easy to watch.
+	if enabled("FEATURE_CACHE_WARMUP") {
+		slog.Info("Warming up the cache", "duration", warmUp)
+
+		if !sleep(ctx, warmUp) {
+			return ctx.Err()
+		}
+
+		slog.Info("Cache ready")
+	}
+
 	db, err := connectPostgres(ctx, postgresURL)
 	if err != nil {
 		return err
@@ -71,7 +89,19 @@ func run() error {
 
 	go serveHealthz(ctx)
 
+	// Feature flag (experimental): store the votes in batches of BATCH_SIZE (100 by default).
+	if enabled("FEATURE_BATCH_INSERT") {
+		size, _ := strconv.Atoi(os.Getenv("BATCH_SIZE"))
+		return processVotesInBatches(ctx, vk, db, size)
+	}
+
 	return processVotes(ctx, vk, db)
+}
+
+// enabled reports whether the feature flag in env var name is on ("true", "1"…).
+func enabled(name string) bool {
+	on, _ := strconv.ParseBool(os.Getenv(name))
+	return on
 }
 
 // processVotes blocks on the Valkey list and stores each vote until ctx is cancelled.
@@ -107,6 +137,61 @@ func processVotes(ctx context.Context, vk valkey.Client, db *pgxpool.Pool) error
 	}
 }
 
+// processVotesInBatches stores the votes by batches of size, in one round trip each, so the
+// database gets fewer and larger writes under heavy load. A partial batch is stored as soon as
+// the Valkey list stays empty for a pop window.
+func processVotesInBatches(ctx context.Context, vk valkey.Client, db *pgxpool.Pool, size int) error {
+	// Share the pop timeout across the batch, so a full batch never waits longer than one pop.
+	popWindow := popTimeout / time.Duration(size)
+	batch := make([]ballot, 0, size)
+
+	slog.Info("Batch insert enabled", "size", size, "pop_window", popWindow)
+
+	for {
+		cmd := vk.B().Blpop().Key(votesKey).Timeout(popWindow.Seconds()).Build()
+
+		res, err := vk.Do(ctx, cmd).AsStrSlice()
+		switch {
+		case ctx.Err() != nil:
+			return ctx.Err()
+		case valkey.IsValkeyNil(err):
+			batch = flushVotes(ctx, db, batch)
+			continue
+		case err != nil:
+			slog.Error("Waiting for valkey", "error", err)
+			sleep(ctx, time.Second)
+
+			continue
+		}
+
+		b, err := decodeBallot(res[1])
+		if err != nil {
+			slog.Error("Skipping invalid vote", "payload", res[1], "error", err)
+			continue
+		}
+
+		batch = append(batch, b)
+		if len(batch) >= size {
+			batch = flushVotes(ctx, db, batch)
+		}
+	}
+}
+
+// flushVotes stores the batch, if any, and returns it emptied.
+func flushVotes(ctx context.Context, db *pgxpool.Pool, batch []ballot) []ballot {
+	if len(batch) == 0 {
+		return batch
+	}
+
+	if err := storeVotes(ctx, db, batch); err != nil {
+		slog.Error("Could not store votes", "count", len(batch), "error", err)
+	} else {
+		slog.Info("Processed votes", "count", len(batch))
+	}
+
+	return batch[:0]
+}
+
 func decodeBallot(payload string) (ballot, error) {
 	var b ballot
 	if err := json.Unmarshal([]byte(payload), &b); err != nil {
@@ -122,12 +207,19 @@ func decodeBallot(payload string) (ballot, error) {
 
 // storeVote keeps one vote per voter: a new vote from the same voter replaces the previous one.
 func storeVote(ctx context.Context, db *pgxpool.Pool, b ballot) error {
-	_, err := db.Exec(ctx,
-		`INSERT INTO votes (id, vote) VALUES ($1, $2)
-		 ON CONFLICT (id) DO UPDATE SET vote = EXCLUDED.vote`,
-		b.VoterID, b.Vote)
+	_, err := db.Exec(ctx, upsertVote, b.VoterID, b.Vote)
 
 	return err
+}
+
+// storeVotes stores several votes in one round trip, with the same rule as storeVote.
+func storeVotes(ctx context.Context, db *pgxpool.Pool, votes []ballot) error {
+	batch := &pgx.Batch{}
+	for _, b := range votes {
+		batch.Queue(upsertVote, b.VoterID, b.Vote)
+	}
+
+	return db.SendBatch(ctx, batch).Close()
 }
 
 func ensureSchema(ctx context.Context, db *pgxpool.Pool) error {

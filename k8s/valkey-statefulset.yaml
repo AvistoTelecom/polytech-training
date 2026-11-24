@@ -2,31 +2,31 @@ apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   labels:
-    app: redis
-  name: redis
+    app: valkey
+  name: valkey
 spec:
-  serviceName: redis
+  serviceName: valkey
   replicas: 1
   selector:
     matchLabels:
-      app: redis
+      app: valkey
   template:
     metadata:
       labels:
-        app: redis
+        app: valkey
     spec:
       containers:
-        - image: redis:7-alpine
-          name: redis
+        - image: valkey/valkey:8-alpine
+          name: valkey
           ports:
             - containerPort: 6379
-              name: redis
+              name: valkey
           volumeMounts:
             - mountPath: /data
-              name: redis-data
+              name: valkey-data
   volumeClaimTemplates:
     - metadata:
-        name: redis-data
+        name: valkey-data
       spec:
         accessModes: ["ReadWriteOnce"]
         resources:

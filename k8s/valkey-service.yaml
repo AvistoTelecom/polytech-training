@@ -1,0 +1,14 @@
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: valkey
+  name: valkey
+spec:
+  type: ClusterIP
+  ports:
+    - name: valkey
+      port: 6379
+      targetPort: 6379
+  selector:
+    app: valkey
